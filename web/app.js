@@ -68,6 +68,7 @@ const CATS = [
   { key: 'divine_beast', data: 'divine_beasts', label: t('cat.divine_beast'), icon: 'divine_beast', group: t('group.places'), on: true, phone: true },
   { key: 'great_fairy', data: 'great_fairies', label: t('cat.great_fairy'), icon: 'great_fairy', group: t('group.places'), on: true },
   // Malanya brings back the last horse that died: a place to go, not tracked
+  { key: 'tech_lab', data: 'tech_labs', label: t('cat.tech_lab'), icon: 'tech_lab', group: t('group.places'), on: true },
   { key: 'zora_monument', data: 'zora_monuments', label: t('cat.zora_monument'), icon: 'zora_monument', group: t('group.places') },
   // Farosh, Dinraal and Naydra with their flight routes: only with a local markers-ext.json (build_mapdata.dragons)
   { key: 'dragon', data: 'dragons', label: t('cat.dragon'), icon: 'dragon', group: t('group.places'), on: true, track: false, note: 'pop.dragon', optional: true },
@@ -277,6 +278,7 @@ const SINGULAR = Object.fromEntries(['korok', 'hinox', 'talus', 'molduga', 'lyne
 // what "done" means, per layer (default: Done / Not yet)
 const DONE_WORDS = Object.fromEntries(['korok', 'tower', 'divine_beast', 'location', 'great_fairy', 'hinox', 'talus', 'molduga',
   'armor_chest', 'treasure_chest', 'memory', 'zora_monument'].map(k => [k, [t(`done.${k}.yes`), t(`done.${k}.no`)]]));
+DONE_WORDS.tech_lab = DONE_WORDS.location;
 function objName(cat, o) {
   if (o.drop) return SINGULAR[cat.key] || cat.label;   // chests: named by what's inside, in the popup
   if (o.number) return o.display_name ? t('memory.numbered', { n: o.number, title: o.display_name })   // the album's order

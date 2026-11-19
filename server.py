@@ -41,7 +41,7 @@ CONTENT_TYPES = {
     '.jpg': 'image/jpeg', '.ico': 'image/x-icon',
 }
 # Bump when build_mapdata's output changes: existing installs then rebuild the map data (not the tiles).
-DATA_VERSION = 6   # 3: outfits.json, 4: outfit pictures, 5: Korok puzzles and hints, memories, place names, quest goals, 6: Malanya, Zora monuments, dragons, local markers files
+DATA_VERSION = 7   # 3: outfits.json, 4: outfit pictures, 5: Korok puzzles and hints, memories, place names, quest goals, 6: Malanya, Zora monuments, dragons, local markers files, 7: Ancient Tech Labs
 
 
 def have_assets():

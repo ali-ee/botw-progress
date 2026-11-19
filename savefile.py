@@ -25,6 +25,7 @@ CATEGORIES = {
     'molduga':        ('moldugas', 'nonzero'),
     'lynel':          ('lynels', 'none'),     # not tracked: Lynels come back after a Blood Moon
     'horse_god':      ('horse_gods', 'none'),  # Malanya: a place to go, nothing to complete
+    'tech_lab':       ('tech_labs', 'nonzero'),   # Location_<lab>: discovered
     'zora_monument':  ('zora_monuments', 'nonzero'),   # ZoraRelief_Check_NN: the monument was read
     'dragon':         ('dragons', 'none'),     # not tracked: they fly every day
     'armor_chest':    ('armor_chests', 'nonzero'),

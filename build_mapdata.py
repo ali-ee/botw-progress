@@ -400,7 +400,7 @@ def build(extracted, out=OUT, lang='USen', log=print):
 
     data = {k: [] for k in ('koroks', 'shrines', 'towers', 'divine_beasts', 'locations', 'great_fairies',
                             'hinoxes', 'taluses', 'moldugas', 'lynels', 'armor_chests', 'treasure_chests',
-                            'horse_gods', 'zora_monuments')}
+                            'horse_gods', 'zora_monuments', 'tech_labs')}
 
     # ---- location markers: shrines, towers, Divine Beasts, villages, stables and other places
     seen = set()
@@ -431,8 +431,9 @@ def build(extracted, out=OUT, lang='USen', log=print):
                                           'position': p, 'completion_hash': flag(f'Clear_{icon}')})
         elif (icon in PLACE_ICONS) and sf.startswith('Location_') and sf in flags:
             seen.add(sf)
-            data['locations'].append({'internal_name': mid, 'display_name': name, 'position': p,
-                                      'completion_hash': crc(sf)})
+            # the Ancient Tech Labs (Hateno, Akkala) get their own category
+            data['tech_labs' if icon == 'Labo' else 'locations'].append(
+                {'internal_name': mid, 'display_name': name, 'position': p, 'completion_hash': crc(sf)})
     # a Divine Beast marker moves with the beast; the location marker with Clear_ is the one that counts
     data['shrines'].sort(key=lambda o: o['internal_name'])
     data['towers'].sort(key=lambda o: o['internal_name'])
