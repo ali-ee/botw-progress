@@ -4,6 +4,11 @@ assets/
 *.sav
 # Local settings and logs
 config.json
+# Korok hints you collect yourself (a guide's text: yours to keep, not the repository's)
+korok_hints.json
+# An online map's marker exports you saved yourself (Korok types, dragons, quest givers): yours, not the repository's
+markers.json
+markers-ext.json
 app.log
 __pycache__/
 *.part

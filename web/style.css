@@ -207,6 +207,30 @@ body.tab-quests .view-map, body.tab-outfits .view-map { display: none !important
 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .dot.gold { background: #e3c27a; }
 .dot.blue { background: #7fb8ff; }
+.dot.violet { background: #c79bff; }
+/* a quest's hidden goal (the hidden-goals toggle) */
+.gmk { width: 22px !important; height: 22px !important; margin: -11px 0 0 -11px !important; border-radius: 50%;
+  background: #c79bff; color: #1d1030; font-weight: 800; font-size: 14px; line-height: 22px; text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,.7), 0 0 0 2px rgba(29,16,48,.6); }
+.gmk.focus { animation: pulse-violet 1.2s ease-out 3; }
+@keyframes pulse-violet { 0% { box-shadow: 0 0 0 0 rgba(199,155,255,.9); } 100% { box-shadow: 0 0 0 18px rgba(199,155,255,0); } }
+.quest .goto.goal { border-color: #c79bff; color: #c79bff; margin-left: 4px; }
+/* popups: a memory's album photo, a Korok's hint */
+.pop.wide { min-width: 220px; }
+.pop-photo { display: block; width: 240px; max-width: 100%; border-radius: 6px; margin: 6px 0 4px; }
+.pop .pop-hint { color: #cfcabd; margin: 4px 0; max-width: 260px; line-height: 1.4; }
+.pop .pop-hint b { color: var(--muted); font-weight: 600; }
+/* the game's place names, styled by kind; they never take clicks */
+.maplabel { pointer-events: none; white-space: nowrap; }
+.maplabel span { display: inline-block; transform: translate(-50%, -50%); color: #f1ead6; font-size: 11px; font-weight: 500;
+  text-shadow: 0 0 3px #000, 0 0 2px #000, 0 1px 2px #000; letter-spacing: .01em; }
+.maplabel.lv1 span { font-size: 18px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #f3dfa8; }
+.maplabel.lv2 span { font-size: 14px; font-weight: 600; color: #f3dfa8; }
+.maplabel.lv8 span { font-size: 10.5px; }
+.maplabel.k-water span { color: #a9d4f5; font-style: italic; }
+.maplabel.k-lava span { color: #ffb38a; font-style: italic; }
+.maplabel.k-mountain span { color: #e4d6bb; }
+.maplabel.k-spot span { color: #d8d1bf; font-size: 10.5px; }
 .smk { width: 22px !important; height: 22px !important; border-radius: 50% 50% 50% 4px; transform-origin: center;
   background: #7fb8ff; color: #0b1520; font-weight: 800; font-size: 14px; line-height: 22px; text-align: center;
   box-shadow: 0 1px 3px rgba(0,0,0,.7), 0 0 0 2px rgba(11,21,32,.6); }
@@ -332,3 +356,10 @@ body.tab-quests .view-map, body.tab-outfits .view-map { display: none !important
   background: radial-gradient(circle at 50% 45%, #313b44, #1c2329 72%); border: 1px solid var(--line); }
 .opop { display: flex; gap: 10px; align-items: center; }
 .opop .pimg { width: 56px; height: 56px; object-fit: contain; flex: none; }
+/* Teleport buttons in popups: only while Savage Wind answers live on its control port */
+.pop .tp-row { display: none; margin-top: 6px; gap: 6px; flex-wrap: wrap; }
+body.game-live .pop .tp-row { display: flex; }
+.pop .tp { font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 5px; cursor: pointer;
+  background: transparent; border: 1px solid #6fd3c2; color: #6fd3c2; }
+.pop .tp:hover { background: rgba(111,211,194,.15); }
+.pop .tp:disabled { opacity: .5; cursor: default; }

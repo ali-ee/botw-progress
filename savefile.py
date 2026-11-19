@@ -24,8 +24,12 @@ CATEGORIES = {
     'talus':          ('taluses', 'nonzero'),
     'molduga':        ('moldugas', 'nonzero'),
     'lynel':          ('lynels', 'none'),     # not tracked: Lynels come back after a Blood Moon
+    'horse_god':      ('horse_gods', 'none'),  # Malanya: a place to go, nothing to complete
+    'zora_monument':  ('zora_monuments', 'nonzero'),   # ZoraRelief_Check_NN: the monument was read
+    'dragon':         ('dragons', 'none'),     # not tracked: they fly every day
     'armor_chest':    ('armor_chests', 'nonzero'),
     'treasure_chest': ('treasure_chests', 'nonzero'),
+    'memory':         ('memories', 'nonzero'),   # IsPlayed_<cutscene>: the memory was recalled
 }
 
 

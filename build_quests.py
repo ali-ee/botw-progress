@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 import gamefiles
-from build_mapdata import crc, game_flags, messages, Text, placed_actors
+from build_mapdata import crc, game_flags, messages, Text, placed_actors, static_doc, local_json, Heights
 from paths import ASSETS
 
 OUT = ASSETS / 'quests.json'
@@ -36,6 +36,72 @@ def points(step):
     return out
 
 
+def _pt(t):
+    if isinstance(t, dict):
+        return [round(t['X'], 1), round(t['Y'], 1), round(t['Z'], 1)]
+    return [round(t[0], 1), round(t[1], 1), round(t[2], 1)]
+
+
+MAX_GOAL_POINTS = 8
+
+
+def goal_finder(objs, static):
+    """Where a quest's hidden goal is. Many quests point the map at the person to report to, while what they ask
+    for is a flag the game sets somewhere else: a trigger placed in the map that sets it (Misko's treasure, a
+    riddle's answer) or a shrine that appears (Open_DungeonNNN). Returns flag -> [points] (empty when unknown)."""
+    setters = {}
+    for o in objs:
+        f = (o.get('!Parameters') or {}).get('SaveFlag')
+        if f and o.get('Translate') is not None:
+            p = _pt(o['Translate'])
+            if p[1] != 0:   # logic parked at height 0 (outside the playable world) is no place to go
+                setters.setdefault(f, []).append(p)
+    shrines = {m.get('MessageID'): _pt(m['Translate']) for m in static.get('LocationMarker', [])
+               if m.get('Icon') == 'Dungeon' and m.get('MessageID')}
+
+    def find(flag):
+        if not flag:
+            return []
+        m = re.fullmatch(r'Open_(Dungeon\d+)', flag)
+        if m and m.group(1) in shrines:
+            return [shrines[m.group(1)]]
+        out = []
+        for p in setters.get(flag, []):   # triggers of one place (a door and its switch, two sides of a spring) count once
+            if all(abs(p[0] - q[0]) + abs(p[2] - q[2]) > GOAL_MERGE for q in out):
+                out.append(p)
+        return out[:MAX_GOAL_POINTS]
+    return find
+
+
+GOAL_MERGE = 250   # map units: hidden-goal triggers closer than this are one place
+
+
+def _norm(name):
+    return re.sub(r'[^a-z0-9]+', ' ', re.sub(r'\s*\(quest\)\s*$', '', name.lower())).strip()
+
+
+def giver_spots(ext, objs, where):
+    """{normalized English quest name: [x, y, z]} from a local markers-ext.json (its questMain / questSide /
+    questShrine rows: where the quest giver stands, by hand, x and z only). The height is the giver's own
+    placement's when one is near, else the nearest placed actor's."""
+    if not ext:
+        return {}
+    strings = ext.get('strings') or []
+    heights = Heights(objs)
+    out = {}
+    for r in ext.get('rows') or []:
+        if not (isinstance(r, list) and len(r) >= 5 and r[3] in ('questMain', 'questSide', 'questShrine')):
+            continue
+        if not (isinstance(r[4], int) and r[4] < len(strings)):
+            continue
+        x, z = r[0], r[1]
+        npc = [p for ps in where.values() for p in ps if (p[0] - x) ** 2 + (p[2] - z) ** 2 < 25 ** 2]
+        y = min(npc, key=lambda p: (p[0] - x) ** 2 + (p[2] - z) ** 2)[1] if npc else heights.y(x, z)
+        if y is not None:
+            out.setdefault(_norm(strings[r[4]]), [round(x, 1), round(y, 1), round(z, 1)])
+    return out
+
+
 def build(extracted, out=OUT, lang='USen', log=print, objs=None):
     rf = gamefiles.Romfs(extracted)
     raw, lang = messages(rf, lang)
@@ -47,6 +113,7 @@ def build(extracted, out=OUT, lang='USen', log=print, objs=None):
     # quest givers: where the NPC who gives the quest is placed (when there's just one of them)
     if objs is None:
         objs = placed_actors(rf, log=lambda m: None)
+    find_goal = goal_finder(objs, static_doc(rf))
     where = {}
     for o in objs:
         u = o['UnitConfigName']
@@ -54,6 +121,9 @@ def build(extracted, out=OUT, lang='USen', log=print, objs=None):
             t = o['Translate']
             where.setdefault(u, []).append([round(t[0], 1), round(t[1], 1), round(t[2], 1)])
 
+    # better quest giver spots from a local markers-ext.json (its quest names are English)
+    spots_ext = giver_spots(local_json('markers-ext.json'), objs, where)
+    en = text if lang == 'USen' or not spots_ext else Text(messages(rf, 'USen')[0])
     quests = []
     for i, q in enumerate(pack):
         qid = q['Name']
@@ -61,19 +131,36 @@ def build(extracted, out=OUT, lang='USen', log=print, objs=None):
         name = msg.get(f'QL_{qid}_Name')
         if not name or q.get('NotPostNote'):
             continue   # not in the adventure log
+        # a step's real goal when the game keeps it apart from the step (StepDependencyFlags: the flag that has to
+        # be set before the step's own NextFlag can be, e.g. Misko's treasure found before reporting back)
+        needs = {}
+        for d in q.get('StepDependencyFlags') or []:
+            if d.get('NextFlag') and d.get('DependencyFlag'):
+                needs.setdefault(d['NextFlag'], []).append(d['DependencyFlag'])
         steps = []
         for s in q.get('Steps', []):
             nf = s.get('NextFlag')
-            steps.append({
+            step = {
                 'name': s.get('Name', ''),
                 'flag': crc(nf) if nf and nf in flags else None,
                 'text': tidy(msg.get(f'QL_{qid}_{s.get("MessageName")}', '')),
                 'points': points(s),
-            })
+            }
+            goal = [p for f in needs.get(nf, []) for p in find_goal(f)]
+            if not goal and not step['points']:   # no map pin: where the game sets this step's own flag
+                goal = find_goal(nf)
+            # only a goal that is one place: triggers spread over Hyrule (one per entrance of a region, ...) say
+            # nothing about where to go
+            if len(goal) == 1 and step['name'] != 'Ready':
+                step['goal'] = goal
+            steps.append(step)
         giver = q.get('Orderer') or ''
         spots = where.get(giver, [])
         exact = 0 < len(spots) <= 3
         start = spots if exact else next((s['points'] for s in steps if s['points']), [])
+        better = spots_ext.get(_norm(en(f'QuestMsg/QL_{qid}').get(f'QL_{qid}_Name') or ''))
+        if better:
+            start, exact = [better], True
         ready = f'{qid}_Ready'
         quests.append({
             'id': qid,

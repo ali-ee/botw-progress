@@ -41,7 +41,7 @@ CONTENT_TYPES = {
     '.jpg': 'image/jpeg', '.ico': 'image/x-icon',
 }
 # Bump when build_mapdata's output changes: existing installs then rebuild the map data (not the tiles).
-DATA_VERSION = 4   # 3: outfits.json, 4: outfit pictures
+DATA_VERSION = 6   # 3: outfits.json, 4: outfit pictures, 5: Korok puzzles and hints, memories, place names, quest goals, 6: Malanya, Zora monuments, dragons, local markers files
 
 
 def have_assets():
@@ -304,6 +304,8 @@ LIVE_POLL_S = 0.25      # four times a second while the game answers
 LIVE_STALE_S = 2.0      # no good answer for this long: not live any more
 LIVE_IDLE_S = 6.0       # stop asking the game when no page has asked /api/live for this long
 LIVE_TIMEOUT_S = 1.5    # connect and reply timeout; a reply normally comes within one frame
+TELEPORT_TIMEOUT_S = 5.0   # `goto` answers at once and moves Link over the next seconds
+TELEPORT_LIFT_M = 0.5      # land Link a little above the marker, so he doesn't end up inside the ground or an object
 _YAW = re.compile(r'(?:^|\s)yaw=(-?\d+(?:\.\d+)?)(?:\s|$)')
 
 
@@ -348,7 +350,8 @@ def parse_pos_reply(line):
 class LiveGame:
     """Link's position right now, from a running Savage Wind's local control socket (127.0.0.1, only when the game
     was started with SAVAGEWIND_CONTROL=<port>). Text in, one JSON line out. That port also takes developer
-    commands, so this only ever sends `pos`, which only reads. A thread asks four times a second while a page wants
+    commands, so this poller only ever sends `pos`, which only reads (teleport() below sends `goto`, and only when
+    the player clicks a Teleport button on this PC). A thread asks four times a second while a page wants
     the live position (it polls /api/live) and nothing at all otherwise; while the game isn't there it tries again
     after 1, 2, 4 ... up to 10 seconds. A connection that stops answering is closed and opened anew."""
     REQUEST = b'pos\n'   # the one command sent, ever
@@ -378,6 +381,35 @@ class LiveGame:
                     out['age_ms'] = round(age * 1000)
             out['port'] = self.port
             return out
+
+    def teleport(self, x, y, z):
+        """Ask the game to move Link to x y z (Savage Wind's `goto`: it waits for the ground there to load and puts
+        him on it, a few seconds). Its own connection, so the poller's replies don't mix with this one."""
+        try:
+            x, y, z = (float(v) for v in (x, y, z))
+        except (TypeError, ValueError):
+            raise ValueError('bad position')
+        if not all(abs(v) < 10000 for v in (x, y, z)):   # Hyrule is ±6000 across (also rejects nan and inf)
+            raise ValueError('bad position')
+        y += TELEPORT_LIFT_M
+        try:
+            with socket.create_connection(('127.0.0.1', self.port), timeout=TELEPORT_TIMEOUT_S) as sock:
+                sock.sendall(f'goto {x:.2f} {y:.2f} {z:.2f}\n'.encode())
+                buf = b''
+                while b'\n' not in buf and len(buf) < 65536:
+                    chunk = sock.recv(4096)
+                    if not chunk:
+                        break
+                    buf += chunk
+        except OSError:
+            return {'ok': False, 'error': 'not_running'}
+        try:
+            d = json.loads(buf.split(b'\n', 1)[0].decode('utf-8', 'replace'))
+        except ValueError:
+            return {'ok': False, 'error': 'unreadable'}
+        if not isinstance(d, dict) or not d.get('ok'):
+            return {'ok': False, 'error': str((d or {}).get('error') or 'failed')[:200]}
+        return {'ok': True}
 
     def _set(self, r):
         with self.lock:
@@ -537,8 +569,8 @@ class State:
         except Exception:
             traceback.print_exc()
 
-    UI_PREFS = {'off', 'known', 'mode', 'layer', 'tab', 'slot', 'qmode', 'qtargets', 'qstarts', 'qopen', 'omode', 'oopen',
-                'mystery', 'updateSkip', 'live'}
+    UI_PREFS = {'off', 'known', 'mode', 'layer', 'tab', 'slot', 'qmode', 'qtargets', 'qstarts', 'qsecrets', 'qopen', 'omode',
+                'oopen', 'mystery', 'labels', 'updateSkip', 'live'}
 
     def set_prefs(self, values):
         """View settings of the page (legend, filters, layer, tab, ...), kept in config.json so they survive
@@ -1079,6 +1111,8 @@ def make_handler(state, server_ref, remote=False):
                     self.send_json(Game.choose(state))
                 elif p == '/api/game/start':
                     self.send_json(Game.start(state))
+                elif p == '/api/teleport':   # Savage Wind's `goto` through its control port (this PC only)
+                    self.send_json(state.live.teleport(body.get('x'), body.get('y'), body.get('z')))
                 elif p == '/api/quit':
                     self.send_json({'ok': True})
                     threading.Thread(target=lambda: (time.sleep(0.3), Ui.quit(server_ref[0])), daemon=True).start()

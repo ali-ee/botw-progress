@@ -67,6 +67,11 @@ const CATS = [
   { key: 'tower', data: 'towers', label: t('cat.tower'), icon: 'tower', group: t('group.places'), on: true, phone: true },
   { key: 'divine_beast', data: 'divine_beasts', label: t('cat.divine_beast'), icon: 'divine_beast', group: t('group.places'), on: true, phone: true },
   { key: 'great_fairy', data: 'great_fairies', label: t('cat.great_fairy'), icon: 'great_fairy', group: t('group.places'), on: true },
+  // Malanya brings back the last horse that died: a place to go, not tracked
+  { key: 'zora_monument', data: 'zora_monuments', label: t('cat.zora_monument'), icon: 'zora_monument', group: t('group.places') },
+  // Farosh, Dinraal and Naydra with their flight routes: only with a local markers-ext.json (build_mapdata.dragons)
+  { key: 'dragon', data: 'dragons', label: t('cat.dragon'), icon: 'dragon', group: t('group.places'), on: true, track: false, note: 'pop.dragon', optional: true },
+  { key: 'horse_god', data: 'horse_gods', label: t('cat.horse_god'), icon: 'horse_god', group: t('group.places'), on: true, track: false, note: 'pop.horse_god' },
   { key: 'location', data: 'locations', label: t('cat.location'), icon: 'location', group: t('group.places') },
   { key: 'hinox', data: 'hinoxes', label: t('cat.hinox'), icon: 'hinox', group: t('group.bosses') },
   { key: 'talus', data: 'taluses', label: t('cat.talus'), icon: 'talus', group: t('group.bosses') },
@@ -76,8 +81,10 @@ const CATS = [
   { key: 'armor_chest', data: 'armor_chests', label: t('cat.armor_chest'), icon: 'armor_chest', group: t('group.chests'), on: true },
   // ~1,300 chests: off unless asked for
   { key: 'treasure_chest', data: 'treasure_chests', label: t('cat.treasure_chest'), icon: 'treasure_chest', group: t('group.chests'), size: 20 },
+  { key: 'memory', data: 'memories', label: t('cat.memory'), icon: 'memory', group: t('group.memories'), on: true },
 ];
 const SIZE = 1500;
+const DRAGON_COLOR = { farosh: '#d6e34a', dinraal: '#ef6a3a', naydra: '#7cc8f2' };
 const POLL_MS = 4000;
 
 // View settings (legend, filters, layer, tab, ...) are kept by the app in config.json (/api/prefs), so they
@@ -139,6 +146,9 @@ const state = {
   qmode: store.get('qmode', 'active'),
   qtargets: store.get('qtargets', true),
   qstarts: store.get('qstarts', false),
+  // hidden quest goals (where a riddle's treasure is, ...): spoilers, so off until asked for
+  qsecrets: store.get('qsecrets', false),
+  labels: store.get('labels', true),   // the game's place names on the map
   // Spoiler-free: everything not found yet is a plain "?" (no type, name or Korok route), see render()
   mystery: store.get('mystery', false),
   quests: null,      // definitions from /data/quests.json
@@ -262,13 +272,15 @@ function icon(cat, done, found) {
 }
 
 // one of a kind, for names of markers without one of their own (Korok seed: Lift the rock, ...)
-const SINGULAR = Object.fromEntries(['korok', 'hinox', 'talus', 'molduga', 'lynel', 'armor_chest', 'treasure_chest']
+const SINGULAR = Object.fromEntries(['korok', 'hinox', 'talus', 'molduga', 'lynel', 'armor_chest', 'treasure_chest', 'memory', 'zora_monument']
   .map(k => [k, t('one.' + k)]));
 // what "done" means, per layer (default: Done / Not yet)
 const DONE_WORDS = Object.fromEntries(['korok', 'tower', 'divine_beast', 'location', 'great_fairy', 'hinox', 'talus', 'molduga',
-  'armor_chest', 'treasure_chest'].map(k => [k, [t(`done.${k}.yes`), t(`done.${k}.no`)]]));
+  'armor_chest', 'treasure_chest', 'memory', 'zora_monument'].map(k => [k, [t(`done.${k}.yes`), t(`done.${k}.no`)]]));
 function objName(cat, o) {
   if (o.drop) return SINGULAR[cat.key] || cat.label;   // chests: named by what's inside, in the popup
+  if (o.number) return o.display_name ? t('memory.numbered', { n: o.number, title: o.display_name })   // the album's order
+    : t('name.numbered', { name: SINGULAR[cat.key] || cat.label, n: o.number });
   if (o.display_name) return tData(o.display_name);
   const one = SINGULAR[cat.key] || cat.label;
   return o.type ? t('name.typed', { name: one, type: tData(o.type) }) : one;
@@ -278,15 +290,60 @@ function popupHtml(cat, o, done, found) {
   const p = o.position;
   const [yes, no] = DONE_WORDS[cat.key] || [t('done.yes'), t('done.no')];
   const status = cat.track === false
-    ? `<div class="row">${esc(t('pop.lynel'))}</div>`
+    ? `<div class="row">${esc(t(cat.note || 'pop.lynel'))}</div>`
     : `<div class="row">${esc(t('pop.status'))} <span class="st ${done ? 'yes' : found ? 'found' : 'no'}">${esc(done ? yes : found ? t('pop.found') : no)}</span></div>`;
-  const extra = o.drop ? `<div class="row">${esc(t('pop.contains', { item: o.display_name || o.drop }))}</div>`
+  let extra = o.drop ? `<div class="row">${esc(t('pop.contains', { item: o.display_name || o.drop }))}</div>`
     : o.subtitle ? `<div class="row"><i>${esc(o.subtitle)}</i></div>` : '';
-  return `<div class="pop"><h3>${esc(objName(cat, o))}</h3>
+  // a Captured Memory: its photo from the Sheikah Slate album (copied from the game files at setup)
+  if (o.photo) extra += `<img class="pop-photo" src="/assets/memories/${encodeURIComponent(o.photo)}?v=${state.iconStamp || 0}" alt="" loading="lazy">`
+    + (o.place ? `<div class="row">${esc(t('pop.photo', { place: o.place }))}</div>` : '');
+  // a dragon: the spring it rises from and the parts it drops
+  if (o.place && o.route) extra += `<div class="row">${esc(t('pop.dragonSpring', { place: o.place }))}</div>`;
+  if (o.drops) extra += `<div class="row">${esc(t('pop.drops', { items: o.drops.join(', ') }))}</div>`;
+  // a Korok's hint, from the user's own korok_hints.json (shown only while it's still to find)
+  if (o.hint && !done) extra += `<div class="row pop-hint"><b>${esc(t(o.route ? 'pop.tip' : 'pop.hint'))}</b> ${esc(o.hint)}</div>`;
+  const start = puzzleStart(o);
+  return `<div class="pop${o.photo ? ' wide' : ''}"><h3>${esc(objName(cat, o))}</h3>
     <div class="row">${esc(cat.label)}</div>${extra}
     ${status}
-    <div class="row">x ${Math.round(p.x)} · y ${Math.round(p.y)} · z ${Math.round(p.z)}</div></div>`;
+    <div class="row">x ${Math.round(p.x)} · y ${Math.round(p.y)} · z ${Math.round(p.z)}</div>
+    ${tpButtons(start ? [[p, 'tp.here'], [start, 'tp.start']] : [[p, 'tp.here']])}</div>`;
 }
+
+// Where a Korok puzzle begins, when that's somewhere else than the Korok: a race's start, or the flower of a trail
+// farthest from where the Korok shows up.
+function puzzleStart(o) {
+  const path = o.path;
+  if (!path) return null;
+  if (path.start) return path.start;
+  if (!path.flowers || !path.flowers.length) return null;
+  const d = f => Math.hypot(f.position.x - o.position.x, f.position.z - o.position.z);
+  const far = path.flowers.reduce((a, b) => (d(b) > d(a) ? b : a)).position;
+  return d({ position: far }) > 20 ? far : null;
+}
+
+// ---------- teleport ----------
+// Savage Wind's `goto`, sent by the map's server to the game's control port. The buttons are in every popup and
+// shown only while the game answers live (body.game-live), and never on phones (the server refuses them anyway).
+function tpButtons(list) {
+  if (REMOTE) return '';
+  return `<div class="row tp-row">${list.map(([p, key]) => `<button type="button" class="tp" data-x="${p.x}" data-y="${p.y}" data-z="${p.z}">${esc(t(key))}</button>`).join('')}</div>`;
+}
+const tpPt = p => ({ x: p[0], y: p[1], z: p[2] });
+document.addEventListener('click', async e => {
+  const b = e.target.closest && e.target.closest('button.tp');
+  if (!b) return;
+  e.preventDefault();
+  if (!state.live) { toast(t('tp.notLive')); return; }
+  const at = { x: +b.dataset.x, y: +b.dataset.y, z: +b.dataset.z };
+  b.disabled = true;
+  try {
+    const r = await fetch('/api/teleport', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-BotW-Progress': '1' }, body: JSON.stringify(at) }).then(x => x.json());
+    if (r.ok) { map.closePopup(); toast(t('tp.going')); if (!state.follow) setFollow(true); }
+    else toast(r.error === 'not_running' ? t('tp.notLive') : t('tp.failed', { error: r.error || '' }));
+  } catch { toast(t('tp.notLive')); }
+  b.disabled = false;
+}, true);   // capture: Leaflet stops clicks inside a popup from bubbling up to the document
 
 // ---------- render ----------
 function render() {
@@ -317,15 +374,45 @@ function render() {
         : L.marker(toLatLng(o.position), { icon: icon(cat, isDone, isFound), riseOnHover: true, keyboard: false });
       m.bindPopup(() => (hidden ? unkPopup(o) : popupHtml(cat, o, isDone, isFound)));
       markerLayer.addLayer(m);
-      const path = o.path && (o.path.flowers ? o.path.flowers.map(f => f.position) : o.path.start && [o.path.start, o.path.end]);
+      // a dragon's flight routes (segments x1, z1, x2, z2)
+      if (o.route && !hidden) pathLayer.addLayer(L.polyline(o.route.map(s => [toLatLng({ x: s[0], z: s[1] }), toLatLng({ x: s[2], z: s[3] })]),
+        { color: DRAGON_COLOR[o.key] || '#d9a6ff', weight: 2, opacity: 0.75, interactive: false }));
+      // a Korok's puzzle: the flowers to follow, a race from its start, or the loop a sparkle flies
+      const path = o.path && (o.path.flowers ? o.path.flowers.map(f => f.position)
+        : o.path.rail ? [...o.path.rail, o.path.rail[0]] : o.path.start && [o.path.start, o.path.end]);
       if (path && !isDone && !hidden) {
-        pathLayer.addLayer(L.polyline(path.map(toLatLng), { color: cat.key === 'carry_korok' ? '#e3c27a' : '#6fd3c2', weight: 2, opacity: 0.8, dashArray: '4 4', interactive: false }));
+        pathLayer.addLayer(L.polyline(path.map(toLatLng), { color: o.path.rail ? '#f3e39a' : cat.key === 'carry_korok' ? '#e3c27a' : '#6fd3c2', weight: 2, opacity: 0.8, dashArray: '4 4', interactive: false }));
+        if (o.path.start) pathLayer.addLayer(L.circleMarker(toLatLng(o.path.start), { radius: 4, color: '#6fd3c2', weight: 2, fillColor: '#12161a', fillOpacity: 1, interactive: false }));
         if (o.path.flowers) for (const f of path) pathLayer.addLayer(L.circleMarker(toLatLng(f), { radius: 2.5, color: '#f5a3d0', weight: 1, fillOpacity: 1, interactive: false }));
       }
     });
   }
   renderPlayer();
 }
+
+// ---------- place names ----------
+// The game's own map labels (build_mapdata.place_labels): each has the zoom it shows from (ShowLevel 1 = the
+// regions over the whole map ... 8 = small places close up) and a kind for its style. The big region names make
+// way for the smaller ones as you zoom in, like the in-game map. Only the labels in view are added to the page.
+const labelLayer = L.layerGroup().addTo(map);
+const LABEL_ZOOM = { 1: [-10, 0], 2: [-0.75, 1.5], 4: [0.5, 10], 8: [1.5, 10] };   // [from, below] map zoom
+const LABEL_KIND = { 0: 'water', 3: 'lava', 4: 'forest', 5: 'land', 6: 'region', 7: 'mountain', spot: 'spot' };
+function renderLabels() {
+  labelLayer.clearLayers();
+  if (!state.labels || !state.data || !state.data.labels) return;
+  const z = map.getZoom(), view = map.getBounds().pad(0.15);
+  for (const l of state.data.labels) {
+    const [from, below] = LABEL_ZOOM[l.level] || LABEL_ZOOM[4];
+    if (z < from || z >= below) continue;
+    const ll = toLatLng(l.position);
+    if (!view.contains(ll)) continue;
+    labelLayer.addLayer(L.marker(ll, {
+      icon: L.divIcon({ className: `maplabel lv${l.level} k-${LABEL_KIND[l.kind] || 'land'}`, html: `<span>${esc(l.name)}</span>`, iconSize: null }),
+      interactive: false, keyboard: false, zIndexOffset: -1000,
+    }));
+  }
+}
+map.on('zoomend moveend', renderLabels);
 
 // Link's position: live from a running Savage Wind when its control port answers (/api/live, see pollLive), else
 // where the game last saved (PlayerStatus.SavePos).
@@ -390,6 +477,7 @@ function setLive(p, reason) {
   const was = state.live;
   state.live = p;
   state.liveReason = p ? 'live' : reason || 'missing';
+  document.body.classList.toggle('game-live', !!p);   // (shows the Teleport buttons)
   if (!!was !== !!p || (was && p && (was.x !== p.x || was.y !== p.y || was.z !== p.z || was.heading !== p.heading))) renderPlayer();
   renderLiveStatus();
 }
@@ -413,8 +501,11 @@ function renderLegend() {
   const done = state.progress ? state.progress.done : {};
   const el = $('#legend');
   el.innerHTML = `<label class="check mystery" title="${esc(t('mystery.hint'))}"><input type="checkbox" id="mystery" ${state.mystery ? 'checked' : ''}>
-    <span>${esc(t('mystery.toggle'))}</span></label>`;
+    <span>${esc(t('mystery.toggle'))}</span></label>
+    <label class="check mystery" title="${esc(t('labels.hint'))}"><input type="checkbox" id="labels" ${state.labels ? 'checked' : ''}>
+    <span>${esc(t('labels.toggle'))}</span></label>`;
   el.querySelector('#mystery').onchange = e => { state.mystery = e.target.checked; store.set('mystery', state.mystery); renderLegend(); render(); };
+  el.querySelector('#labels').onchange = e => { state.labels = e.target.checked; store.set('labels', state.labels); renderLabels(); };
   if (state.mystery) {
     const found = (state.progress && state.progress.found) || {};
     let left = 0;
@@ -434,6 +525,7 @@ function renderLegend() {
   for (const cat of CATS) {
     if (cat.group !== group) { group = cat.group; el.insertAdjacentHTML('beforeend', `<h2>${esc(group)}</h2>`); }
     const total = (state.data[cat.data] || []).length;
+    if (cat.optional && !total) continue;   // from a local file the user doesn't have
     const n = (done[cat.key] || []).filter(Boolean).length;
     const b = document.createElement('button');
     b.className = 'cat' + (state.off.has(cat.key) ? ' off' : '') + (total && n === total ? ' complete' : '');
@@ -477,6 +569,13 @@ function qStatus(q) {
 const qStep = (q, name) => q.steps.find(s => s.name === name);
 // where to go for an active quest: the places of the step after the one reached
 const targetPoints = q => { const s = qStep(q, rawStatus(q)[3]); return (s && s.points) || []; };
+// Hidden goal of the step to do (build_quests.goal_finder): where the game sets what the step waits for but doesn't
+// pin it (a riddle's treasure, a shrine that appears). Spoilers: only with the toggle on.
+const secretPoints = q => {
+  if (!state.qsecrets || qStatus(q)[0] !== 'active') return [];
+  const s = qStep(q, rawStatus(q)[3]);
+  return (s && s.goal) || [];
+};
 const humanize = s => s.replace(/_/g, ' ').replace(/([a-z])([A-Z0-9])/g, '$1 $2');
 
 const questName = id => (state.quests.find(q => q.id === id) || {}).name || humanize(id);
@@ -514,8 +613,9 @@ function questText(q) {
   }
   const s = qStep(q, step);
   if (st === 'done') return { label: t('quest.completed'), text: s ? s.text : '' };
-  const pts = targetPoints(q);
-  return { label: t('quest.inProgress'), text: (s && s.text) || '', points: pts, goto: pts.length ? t('goto.step') : '', kind: 'target' };
+  const pts = targetPoints(q), goal = secretPoints(q);
+  return { label: t('quest.inProgress'), text: (s && s.text) || '', points: pts, goto: pts.length ? t('goto.step') : '', kind: 'target',
+    goal, gotoGoal: goal.length ? t('goto.goal') : '' };
 }
 
 function renderQuests() {
@@ -551,7 +651,8 @@ function renderQuests() {
         <div class="body"><div class="step">${esc(t.label)}</div>
         ${t.need ? `<div class="need">${esc(t.need)}</div>` : ''}${t.text ? `<div class="txt">${esc(t.text)}</div>` : ''}
         ${t.hint ? `<div class="hint">${esc(t.hint)}</div>` : ''}
-        ${t.goto ? `<button class="goto" data-id="${esc(x.id)}">${esc(t.goto)}</button>` : ''}</div></div>`;
+        ${t.goto ? `<button class="goto" data-id="${esc(x.id)}">${esc(t.goto)}</button>` : ''}
+        ${t.gotoGoal ? `<button class="goto goal" data-id="${esc(x.id)}" data-goal="1">${esc(t.gotoGoal)}</button>` : ''}</div></div>`;
     }
     html += '</details>';
   }
@@ -564,12 +665,17 @@ function renderQuestTargets(focusId) {
   for (const x of state.quests) {
     const [st, step] = qStatus(x);
     const focus = x.id === focusId;
+    for (const p of secretPoints(x)) {   // (empty unless the hidden-goals toggle is on)
+      const m = L.marker(ptLatLng(p), { icon: L.divIcon({ className: 'gmk' + (focus ? ' focus' : ''), html: '?', iconSize: [22, 22] }), zIndexOffset: 1050 });
+      m.bindPopup(`<div class="pop"><h3>${esc(x.name)}</h3><div class="row">${esc(t('quest.goal'))}</div>${tpButtons([[tpPt(p), 'tp.here']])}</div>`);
+      questLayer.addLayer(m);
+    }
     if (st === 'active' && (state.qtargets || focus)) {
       for (const p of targetPoints(x)) {
         if (layerOf(p[1]) !== state.layer) continue;
         const m = L.marker(ptLatLng(p), { icon: L.divIcon({ className: 'qmk' + (focus ? ' focus' : ''), iconSize: [26, 26] }), zIndexOffset: 1000 });
         m.bindPopup(`<div class="pop"><h3>${esc(x.name)}</h3><div class="row">${esc(t('quest.inProgress'))}</div>
-          <div class="row">${esc([x.giver, x.region].filter(Boolean).join(' · '))}</div></div>`);
+          <div class="row">${esc([x.giver, x.region].filter(Boolean).join(' · '))}</div>${tpButtons([[tpPt(p), 'tp.here']])}</div>`);
         questLayer.addLayer(m);
       }
     } else if ((st === 'available' && state.qstarts) || (['available', 'queued', 'locked'].includes(st) && focus)) {
@@ -579,18 +685,19 @@ function renderQuestTargets(focusId) {
         const m = L.marker(ptLatLng(p), { icon: L.divIcon({ className: 'smk' + (approx ? ' approx' : '') + (focus ? ' focus' : ''), html: '!', iconSize: [22, 22] }), zIndexOffset: 900 });
         m.bindPopup(`<div class="pop"><h3>${esc(x.name)}</h3>
           <div class="row">${QSTATUS[st]}${x.giver ? ` · ${esc(x.giver)}` : ''}${x.region ? ` · ${esc(x.region)}` : ''}</div>
-          <div class="row">${esc(approx ? t('quest.approx') : t('quest.giverSpot'))}</div></div>`);
+          <div class="row">${esc(approx ? t('quest.approx') : t('quest.giverSpot'))}</div>${tpButtons([[tpPt(p), 'tp.here']])}</div>`);
         questLayer.addLayer(m);
       }
     }
   }
 }
 
-function showQuestOnMap(id) {
+function showQuestOnMap(id, goal) {
   const x = state.quests.find(q => q.id === id);
   const t = x && questText(x);
-  if (!t || !t.points || !t.points.length) return;
-  const p = t.points[0];
+  const pts = t && (goal ? t.goal : t.points);
+  if (!pts || !pts.length) return;
+  const p = pts[0];
   if (layerOf(p[1]) !== state.layer) setLayer(layerOf(p[1]));
   renderQuestTargets(id);
   map.flyTo(ptLatLng(p), Math.max(map.getZoom(), 1.5), { duration: 0.6 });
@@ -599,7 +706,7 @@ function showQuestOnMap(id) {
 
 $('#quests').addEventListener('click', e => {
   const go = e.target.closest('.goto');
-  if (go) { e.stopPropagation(); showQuestOnMap(go.dataset.id); return; }
+  if (go) { e.stopPropagation(); showQuestOnMap(go.dataset.id, !!go.dataset.goal); return; }
   const card = e.target.closest('.quest');
   if (card) { state.openQuest = state.openQuest === card.dataset.id ? null : card.dataset.id; renderQuests(); }
 });
@@ -873,6 +980,8 @@ $('#qtargets').checked = state.qtargets;
 $('#qtargets').onchange = e => { state.qtargets = e.target.checked; store.set('qtargets', state.qtargets); renderQuestTargets(); };
 $('#qstarts').checked = state.qstarts;
 $('#qstarts').onchange = e => { state.qstarts = e.target.checked; store.set('qstarts', state.qstarts); renderQuestTargets(); };
+$('#qsecrets').checked = state.qsecrets;
+$('#qsecrets').onchange = e => { state.qsecrets = e.target.checked; store.set('qsecrets', state.qsecrets); renderQuests(); renderQuestTargets(); };
 $('#all-on').onclick = () => { state.off.clear(); store.set('off', []); renderLegend(); render(); };
 $('#all-off').onclick = () => { CATS.forEach(c => state.off.add(c.key)); state.off.add(UNK); store.set('off', [...state.off]); renderLegend(); render(); };
 $('#panel-toggle').onclick = () => document.body.classList.toggle('panel-open');
@@ -1191,7 +1300,7 @@ $('#quit').onclick = async () => {
     try { const o = await getJSON('/data/outfits.json'); state.outfits = o.sets; state.outfitStamp = o.built || 0; } catch { state.outfits = null; }
     setTab(state.tab);
     setLayer(state.layer);
-    renderLegend(); renderSummary();
+    renderLegend(); renderSummary(); renderLabels();
     await loadSlots();
     await loadProgress();
   } catch (e) {

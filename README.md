@@ -32,6 +32,37 @@ no type, name or chest contents, all under one "Undiscovered" filter. A **?** ne
 
 ![Spoiler-free mode: everything not found yet is a ?](docs/screenshots/spoiler_free.webp)
 
+More from your game files:
+
+- **Korok puzzles.** Each Korok's popup names its puzzle (shoot the target, follow the flowers, complete the rock
+  circle, ...). A dashed line shows where a puzzle starts: a race from its start, the flower trail, or the loop a
+  sparkle flies.
+- **Captured Memories.** The 13 spots on the map, with their album photo, and whether you've recalled them.
+- **Zora Stone Monuments.** The 10 monuments of the Zora's Domain side quest, numbered, and whether you've read
+  each one.
+- **Place names** (legend checkbox), the in-game map's own labels: the regions zoomed out, smaller places as you
+  zoom in.
+- **Hidden quest goals** (Quests tab checkbox, off by default: they're spoilers). Some quests only pin the person
+  to report to, like the riddle of *Misko, the Great Bandit*. This shows where the goal actually is, as a violet **?**.
+- **Teleport.** While Savage Wind runs with its control port (the live position), popups get a **Teleport here**
+  button, and Korok races and flower trails also **Teleport to the start**. Malanya, the Horse God who brings back a horse
+  that died, is on the map (Places) as a place to teleport to. It's the game's own `goto` command; the
+  save isn't touched. Only on this PC, not from a phone.
+
+**Korok hints from a guide** (optional). Put a `korok_hints.json` next to the app's data (the repository folder
+when running from source, `%LOCALAPPDATA%\BotWProgressMap` for the exe) and the setup adds a hint to each Korok's
+popup: `{"<Korok save flag, e.g. MainField_Npc_HiddenKorokGround_3077381654>": {"hint": "text"}, ...}`. It's your
+own file and is never committed (a guide's text belongs to its authors).
+
+**An online map's marker exports** (optional, same folder, also never committed). With a `markers.json` (its
+`korokTypes` and `korok` rows) every Korok gets a precise puzzle type (33 kinds) instead of the app's own guess. With
+a `markers-ext.json` (its `dragon` rows and `routes`, and its `questMain` / `questSide` / `questShrine` rows) the map
+gets **Dragons**: Farosh, Dinraal and Naydra at the spring each rises from, with their flight routes, the parts they
+drop and a short tip; and the quest givers' spots become exact.
+
+After adding or changing any of these files, delete `assets/source.json` in that folder and start the app again: it
+then rebuilds the map data.
+
 It re-reads the save every few seconds, so the map updates on its own whenever the game saves. It only ever
 reads your game and save files; it never writes to them. When a new version is out, a notice links to it
 (⚙ → *Updates* turns the check off).
